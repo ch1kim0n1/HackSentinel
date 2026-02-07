@@ -1,0 +1,609 @@
+#!/usr/bin/env python3
+"""
+MindCore · Sentinel - A deterministic, time-boxed AI user simulator
+that explores a codebase like a rushed demo judge and outputs engineer-grade bug reports.
+
+CLI-first, local-only, deterministic bug discovery tool.
+"""
+
+import os
+import sys
+import json
+import time
+import subprocess
+import argparse
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple
+
+
+class MindCoreSentinel:
+    """Main class for MindCore Sentinel bug discovery tool."""
+    
+    def __init__(self, target_dir: str, timeout: int = 120):
+        self.target_dir = Path(target_dir).resolve()
+        self.timeout = timeout  # 2 minutes default
+        self.start_time = time.time()
+        self.bugs: List[Dict[str, Any]] = []
+        self.logs: List[str] = []
+        
+    def log(self, message: str):
+        """Add a log message."""
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        log_msg = f"[{timestamp}] {message}"
+        self.logs.append(log_msg)
+        print(log_msg, file=sys.stderr)
+        
+    def is_timeout(self) -> bool:
+        """Check if we've exceeded the timeout."""
+        return (time.time() - self.start_time) > self.timeout
+        
+    def detect_project_type(self) -> str:
+        """Detect the type of project in the target directory."""
+        self.log(f"Analyzing directory: {self.target_dir}")
+        
+        if (self.target_dir / "package.json").exists():
+            return "nodejs"
+        elif (self.target_dir / "requirements.txt").exists() or (self.target_dir / "setup.py").exists():
+            return "python"
+        elif (self.target_dir / "go.mod").exists():
+            return "go"
+        elif (self.target_dir / "Cargo.toml").exists():
+            return "rust"
+        elif (self.target_dir / "pom.xml").exists() or (self.target_dir / "build.gradle").exists():
+            return "java"
+        elif (self.target_dir / "Makefile").exists():
+            return "make"
+        else:
+            return "unknown"
+            
+    def find_entry_points(self, project_type: str) -> List[Dict[str, Any]]:
+        """Find potential entry points in the codebase."""
+        self.log(f"Project type detected: {project_type}")
+        entry_points = []
+        
+        if project_type == "nodejs":
+            entry_points.extend(self._find_nodejs_entry_points())
+        elif project_type == "python":
+            entry_points.extend(self._find_python_entry_points())
+        elif project_type == "go":
+            entry_points.extend(self._find_go_entry_points())
+        elif project_type == "rust":
+            entry_points.extend(self._find_rust_entry_points())
+        elif project_type == "java":
+            entry_points.extend(self._find_java_entry_points())
+        elif project_type == "make":
+            entry_points.extend(self._find_makefile_entry_points())
+        else:
+            entry_points.extend(self._find_generic_entry_points())
+            
+        self.log(f"Found {len(entry_points)} entry points")
+        return entry_points
+        
+    def _find_nodejs_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Node.js entry points."""
+        entry_points = []
+        
+        # Check package.json for scripts
+        package_json = self.target_dir / "package.json"
+        if package_json.exists():
+            try:
+                with open(package_json, 'r') as f:
+                    data = json.load(f)
+                    
+                # Main entry point
+                if "main" in data:
+                    entry_points.append({
+                        "type": "nodejs_main",
+                        "command": ["node", data["main"]],
+                        "description": f"Main entry point: {data['main']}"
+                    })
+                    
+                # Scripts
+                if "scripts" in data:
+                    for script_name, script_cmd in data["scripts"].items():
+                        # Skip install/test scripts to avoid side effects
+                        if script_name not in ["preinstall", "postinstall", "prepare"]:
+                            entry_points.append({
+                                "type": "nodejs_script",
+                                "command": ["npm", "run", script_name],
+                                "description": f"npm script: {script_name}",
+                                "raw_command": script_cmd
+                            })
+            except Exception as e:
+                self.log(f"Error parsing package.json: {e}")
+                
+        # Look for common entry files
+        for filename in ["index.js", "app.js", "server.js", "main.js"]:
+            filepath = self.target_dir / filename
+            if filepath.exists():
+                entry_points.append({
+                    "type": "nodejs_file",
+                    "command": ["node", filename],
+                    "description": f"Common Node.js entry file: {filename}"
+                })
+                
+        return entry_points
+        
+    def _find_python_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Python entry points."""
+        entry_points = []
+        
+        # Look for __main__.py
+        for root, dirs, files in os.walk(self.target_dir):
+            if self.is_timeout():
+                break
+            for file in files:
+                if file == "__main__.py":
+                    rel_path = Path(root).relative_to(self.target_dir)
+                    entry_points.append({
+                        "type": "python_main",
+                        "command": ["python3", "-m", str(rel_path).replace("/", ".")],
+                        "description": f"Python module: {rel_path}"
+                    })
+                    
+        # Look for common entry files
+        for filename in ["main.py", "app.py", "run.py", "cli.py"]:
+            filepath = self.target_dir / filename
+            if filepath.exists():
+                entry_points.append({
+                    "type": "python_file",
+                    "command": ["python3", filename],
+                    "description": f"Common Python entry file: {filename}"
+                })
+                
+        # Look for scripts with shebang
+        for root, dirs, files in os.walk(self.target_dir):
+            if self.is_timeout():
+                break
+            for file in files:
+                if file.endswith(".py"):
+                    filepath = Path(root) / file
+                    try:
+                        with open(filepath, 'r') as f:
+                            first_line = f.readline()
+                            if first_line.startswith("#!") and "python" in first_line:
+                                rel_path = filepath.relative_to(self.target_dir)
+                                if os.access(filepath, os.X_OK):
+                                    entry_points.append({
+                                        "type": "python_script",
+                                        "command": [str(filepath)],
+                                        "description": f"Executable Python script: {rel_path}"
+                                    })
+                    except Exception:
+                        pass
+                        
+        return entry_points
+        
+    def _find_go_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Go entry points."""
+        entry_points = []
+        
+        # Look for main.go files
+        for root, dirs, files in os.walk(self.target_dir):
+            if self.is_timeout():
+                break
+            for file in files:
+                if file == "main.go":
+                    filepath = Path(root) / file
+                    rel_path = filepath.relative_to(self.target_dir)
+                    entry_points.append({
+                        "type": "go_main",
+                        "command": ["go", "run", str(rel_path)],
+                        "description": f"Go main file: {rel_path}"
+                    })
+                    
+        # Try building and running
+        if (self.target_dir / "go.mod").exists():
+            entry_points.append({
+                "type": "go_build",
+                "command": ["go", "run", "."],
+                "description": "Go module main package"
+            })
+            
+        return entry_points
+        
+    def _find_rust_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Rust entry points."""
+        entry_points = []
+        
+        if (self.target_dir / "Cargo.toml").exists():
+            entry_points.append({
+                "type": "rust_cargo",
+                "command": ["cargo", "run"],
+                "description": "Cargo run"
+            })
+            
+        return entry_points
+        
+    def _find_java_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Java entry points."""
+        entry_points = []
+        
+        if (self.target_dir / "pom.xml").exists():
+            entry_points.append({
+                "type": "maven",
+                "command": ["mvn", "exec:java"],
+                "description": "Maven exec"
+            })
+            
+        if (self.target_dir / "build.gradle").exists():
+            entry_points.append({
+                "type": "gradle",
+                "command": ["gradle", "run"],
+                "description": "Gradle run"
+            })
+            
+        return entry_points
+        
+    def _find_makefile_entry_points(self) -> List[Dict[str, Any]]:
+        """Find Makefile entry points."""
+        entry_points = []
+        
+        makefile = self.target_dir / "Makefile"
+        if makefile.exists():
+            entry_points.append({
+                "type": "make",
+                "command": ["make"],
+                "description": "Make default target"
+            })
+            
+            # Try to find other targets
+            try:
+                with open(makefile, 'r') as f:
+                    for line in f:
+                        if ':' in line and not line.startswith('\t') and not line.startswith('#'):
+                            target = line.split(':')[0].strip()
+                            if target and target not in ["all", "clean", "install"]:
+                                entry_points.append({
+                                    "type": "make_target",
+                                    "command": ["make", target],
+                                    "description": f"Make target: {target}"
+                                })
+            except Exception:
+                pass
+                
+        return entry_points
+        
+    def _find_generic_entry_points(self) -> List[Dict[str, Any]]:
+        """Find generic executable entry points."""
+        entry_points = []
+        
+        # Look for executable files in root
+        for item in self.target_dir.iterdir():
+            if item.is_file() and os.access(item, os.X_OK):
+                entry_points.append({
+                    "type": "executable",
+                    "command": [str(item)],
+                    "description": f"Executable: {item.name}"
+                })
+                
+        return entry_points
+        
+    def execute_entry_point(self, entry_point: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute an entry point and capture results."""
+        self.log(f"Executing: {entry_point['description']}")
+        
+        result = {
+            "entry_point": entry_point,
+            "success": False,
+            "stdout": "",
+            "stderr": "",
+            "exit_code": None,
+            "error": None,
+            "duration": 0
+        }
+        
+        try:
+            start = time.time()
+            remaining_time = self.timeout - (start - self.start_time)
+            
+            if remaining_time <= 0:
+                result["error"] = "Global timeout exceeded"
+                return result
+                
+            # Execute with timeout
+            process = subprocess.Popen(
+                entry_point["command"],
+                cwd=self.target_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            try:
+                stdout, stderr = process.communicate(timeout=min(10, remaining_time))
+                result["stdout"] = stdout
+                result["stderr"] = stderr
+                result["exit_code"] = process.returncode
+                result["success"] = process.returncode == 0
+                result["duration"] = time.time() - start
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+                result["stdout"] = stdout
+                result["stderr"] = stderr
+                result["error"] = "Execution timeout (10s)"
+                result["duration"] = time.time() - start
+                
+        except Exception as e:
+            result["error"] = str(e)
+            result["duration"] = time.time() - start
+            
+        return result
+        
+    def analyze_execution_result(self, result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Analyze execution result to identify bugs."""
+        bugs_found = []
+        
+        # Check for non-zero exit code
+        if result["exit_code"] is not None and result["exit_code"] != 0:
+            severity = "HIGH"
+            if result["exit_code"] > 100:
+                severity = "CRITICAL"
+            elif result["stderr"] and ("warning" in result["stderr"].lower()):
+                severity = "MEDIUM"
+                
+            bugs_found.append({
+                "type": "non_zero_exit",
+                "severity": severity,
+                "title": f"Process exited with code {result['exit_code']}",
+                "description": f"The entry point '{result['entry_point']['description']}' terminated with a non-zero exit code.",
+                "reproduction": result["entry_point"]["command"],
+                "output": {
+                    "stdout": result["stdout"][:500],
+                    "stderr": result["stderr"][:500]
+                }
+            })
+            
+        # Check for common error patterns in stderr
+        stderr = result["stderr"].lower()
+        if stderr:
+            error_patterns = [
+                ("error:", "ERROR", "Generic error message"),
+                ("exception", "HIGH", "Unhandled exception"),
+                ("fatal", "CRITICAL", "Fatal error"),
+                ("traceback", "HIGH", "Stack trace"),
+                ("segmentation fault", "CRITICAL", "Segmentation fault"),
+                ("panic", "CRITICAL", "Panic"),
+                ("assertion failed", "HIGH", "Assertion failure"),
+                ("cannot find", "MEDIUM", "Missing dependency or file"),
+                ("permission denied", "MEDIUM", "Permission issue"),
+                ("connection refused", "LOW", "Connection issue")
+            ]
+            
+            for pattern, severity, description in error_patterns:
+                if pattern in stderr:
+                    bugs_found.append({
+                        "type": "error_pattern",
+                        "severity": severity,
+                        "title": description,
+                        "description": f"Found '{pattern}' in error output when executing '{result['entry_point']['description']}'",
+                        "reproduction": result["entry_point"]["command"],
+                        "output": {
+                            "stderr": result["stderr"][:500]
+                        }
+                    })
+                    break  # Only report first pattern match
+                    
+        # Check for execution errors
+        if result["error"]:
+            severity = "HIGH"
+            if "timeout" in result["error"].lower():
+                severity = "MEDIUM"
+            elif "not found" in result["error"].lower():
+                severity = "HIGH"
+                
+            bugs_found.append({
+                "type": "execution_error",
+                "severity": severity,
+                "title": f"Execution error: {result['error']}",
+                "description": f"Failed to execute '{result['entry_point']['description']}'",
+                "reproduction": result["entry_point"]["command"],
+                "output": {
+                    "error": result["error"]
+                }
+            })
+            
+        return bugs_found
+        
+    def run_analysis(self) -> bool:
+        """Run the complete analysis."""
+        try:
+            self.log("=" * 60)
+            self.log("MindCore · Sentinel - Bug Discovery Tool")
+            self.log("=" * 60)
+            
+            # Detect project type
+            project_type = self.detect_project_type()
+            
+            # Find entry points
+            entry_points = self.find_entry_points(project_type)
+            
+            if not entry_points:
+                self.log("WARNING: No entry points found")
+                return False
+                
+            # Execute each entry point
+            results = []
+            for entry_point in entry_points:
+                if self.is_timeout():
+                    self.log("Global timeout reached, stopping execution")
+                    break
+                    
+                result = self.execute_entry_point(entry_point)
+                results.append(result)
+                
+                # Analyze for bugs
+                bugs = self.analyze_execution_result(result)
+                self.bugs.extend(bugs)
+                
+            self.log(f"Analysis complete. Found {len(self.bugs)} potential bugs")
+            return True
+            
+        except Exception as e:
+            self.log(f"FATAL ERROR during analysis: {e}")
+            import traceback
+            self.log(traceback.format_exc())
+            return False
+            
+    def generate_report(self) -> str:
+        """Generate a structured Markdown bug report."""
+        report = []
+        
+        report.append("# MindCore · Sentinel Bug Report")
+        report.append("")
+        report.append(f"**Analysis Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append(f"**Target Directory:** `{self.target_dir}`")
+        report.append(f"**Analysis Duration:** {time.time() - self.start_time:.2f}s")
+        report.append("")
+        
+        # Summary
+        report.append("## Summary")
+        report.append("")
+        
+        if not self.bugs:
+            report.append("✅ **No bugs detected!**")
+            report.append("")
+            report.append("The codebase executed successfully without any detected errors or issues.")
+        else:
+            severity_counts = {}
+            for bug in self.bugs:
+                severity = bug["severity"]
+                severity_counts[severity] = severity_counts.get(severity, 0) + 1
+                
+            report.append(f"Found **{len(self.bugs)}** potential bug(s):")
+            report.append("")
+            for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+                if severity in severity_counts:
+                    report.append(f"- **{severity}:** {severity_counts[severity]}")
+            report.append("")
+            
+            # Detailed bug reports
+            report.append("## Detailed Findings")
+            report.append("")
+            
+            # Group by severity
+            for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+                severity_bugs = [b for b in self.bugs if b["severity"] == severity]
+                if not severity_bugs:
+                    continue
+                    
+                report.append(f"### {severity} Severity")
+                report.append("")
+                
+                for i, bug in enumerate(severity_bugs, 1):
+                    report.append(f"#### Bug #{i}: {bug['title']}")
+                    report.append("")
+                    report.append(f"**Type:** `{bug['type']}`")
+                    report.append("")
+                    report.append("**Description:**")
+                    report.append("")
+                    report.append(bug['description'])
+                    report.append("")
+                    
+                    report.append("**Reproduction Steps:**")
+                    report.append("")
+                    report.append("```bash")
+                    if isinstance(bug['reproduction'], list):
+                        report.append(" ".join(bug['reproduction']))
+                    else:
+                        report.append(str(bug['reproduction']))
+                    report.append("```")
+                    report.append("")
+                    
+                    if bug.get('output'):
+                        report.append("**Output:**")
+                        report.append("")
+                        for key, value in bug['output'].items():
+                            if value:
+                                report.append(f"*{key.upper()}:*")
+                                report.append("```")
+                                report.append(str(value))
+                                report.append("```")
+                                report.append("")
+                    
+                    report.append("---")
+                    report.append("")
+                    
+        # Diagnostic logs
+        report.append("## Diagnostic Logs")
+        report.append("")
+        report.append("```")
+        report.append("\n".join(self.logs[-50:]))  # Last 50 log lines
+        report.append("```")
+        report.append("")
+        
+        report.append("---")
+        report.append("*Generated by MindCore · Sentinel - Local Bug Discovery Tool*")
+        
+        return "\n".join(report)
+
+
+def main():
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(
+        description="MindCore · Sentinel - Deterministic bug discovery tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s /path/to/project
+  %(prog)s . --timeout 60
+  %(prog)s ../my-app --output bug-report.md
+        """
+    )
+    
+    parser.add_argument(
+        "target",
+        help="Target directory to analyze"
+    )
+    
+    parser.add_argument(
+        "-t", "--timeout",
+        type=int,
+        default=120,
+        help="Maximum execution time in seconds (default: 120)"
+    )
+    
+    parser.add_argument(
+        "-o", "--output",
+        help="Output file for bug report (default: stdout)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate target directory
+    target = Path(args.target).resolve()
+    if not target.exists():
+        print(f"ERROR: Target directory does not exist: {target}", file=sys.stderr)
+        return 1
+        
+    if not target.is_dir():
+        print(f"ERROR: Target is not a directory: {target}", file=sys.stderr)
+        return 1
+        
+    # Run analysis
+    sentinel = MindCoreSentinel(str(target), timeout=args.timeout)
+    success = sentinel.run_analysis()
+    
+    # Generate report
+    report = sentinel.generate_report()
+    
+    # Output report
+    if args.output:
+        output_path = Path(args.output)
+        output_path.write_text(report)
+        print(f"Report written to: {output_path}", file=sys.stderr)
+    else:
+        print(report)
+        
+    # Exit code based on success
+    if not success:
+        print("\n⚠️  ANALYSIS FAILED - See diagnostic logs above", file=sys.stderr)
+        return 1
+        
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

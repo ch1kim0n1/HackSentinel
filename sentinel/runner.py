@@ -755,3 +755,24 @@ class MindCoreSentinel:
                 for ep in self.entry_points_found
             ],
         }
+
+    def generate_html_report(self) -> str:
+        """Generate an HTML bug report."""
+        from .html_reporter import HTMLReporter
+        
+        project_name = self.target_dir.name
+        execution_time = time.time() - self.start_time
+        
+        # Convert bugs to format expected by HTML reporter
+        formatted_bugs = []
+        for bug in self.bugs:
+            formatted_bugs.append({
+                'severity': bug.get('severity', 'MEDIUM'),
+                'type': bug.get('type', 'bug'),
+                'description': bug.get('description', bug.get('title', 'Unknown issue')),
+                'file': bug.get('output', {}).get('file', 'Unknown'),
+                'line': bug.get('output', {}).get('line', '?')
+            })
+        
+        reporter = HTMLReporter(project_name)
+        return reporter.generate_report(formatted_bugs, self.logs, self.project_type, execution_time)

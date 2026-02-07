@@ -3,6 +3,7 @@ import sys
 import json
 from pathlib import Path
 from .runner import MindCoreSentinel
+from .html_reporter import HTMLReporter
 
 # Patterns to redact from output (prevent accidental secret leaking)
 SECRET_PATTERNS = [
@@ -28,27 +29,29 @@ def redact_secrets(text: str) -> str:
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="MindCore · Sentinel - Deterministic bug discovery tool",
+        description="MindCore · Sentinel - Fast bug discovery for hackathons",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  %(prog)s /path/to/project
-  %(prog)s . --timeout 60
-  %(prog)s ../my-app --output bug-report.md
-  %(prog)s . --format json --exclude "test/*" --exclude "scripts/*"
-  %(prog)s . --safe-mode
-  %(prog)s --demo                 # Run on bundled sample project
-  %(prog)s --demo --format json   # Demo with JSON output
+Quick Start Examples:
+  sentinel .                          # Scan current directory
+  sentinel /path/to/project           # Scan specific project
+  sentinel . --html                   # Generate HTML report
+  sentinel . --format both            # Generate both MD and HTML
 
-Tip: On Windows, you can also run: python -m sentinel <target>
+Advanced Examples:
+  sentinel . --timeout 60 --no-execute
+  sentinel ../my-app --output bugs.html --format html
+  sentinel . --demo                   # Run on sample project
+
+Tip: Use --no-execute for safe static analysis without running code
         """
     )
 
     parser.add_argument(
         "target",
         nargs="?",
-        default=None,
-        help="Target directory to analyze"
+        default=".",
+        help="Target directory to analyze (default: current directory)"
     )
 
     parser.add_argument(
@@ -71,9 +74,9 @@ Tip: On Windows, you can also run: python -m sentinel <target>
 
     parser.add_argument(
         "-f", "--format",
-        choices=["markdown", "json"],
+        choices=["markdown", "json", "html", "both"],
         default="markdown",
-        help="Output format (default: markdown)"
+        help="Output format: markdown, json, html, or both (md + html) (default: markdown)"
     )
 
     parser.add_argument(
@@ -90,9 +93,11 @@ Tip: On Windows, you can also run: python -m sentinel <target>
     )
 
     parser.add_argument(
+        "--no-execute",
         "--safe-mode",
+        dest="safe_mode",
         action="store_true",
-        help="Analyze without executing code (check file existence and syntax only)"
+        help="Analyze without executing code (safe mode for untrusted repos)"
     )
 
     parser.add_argument(
@@ -120,6 +125,12 @@ Tip: On Windows, you can also run: python -m sentinel <target>
         help="Comma-separated ports to probe for web servers (default: 3000,5000,8000,8080)"
     )
 
+    parser.add_argument(
+        "--smart", 
+        action="store_true",
+        help="Enable AI-powered bug analysis and fix suggestions"
+    )
+
     args = parser.parse_args()
 
     # Demo mode: use bundled sample project
@@ -134,11 +145,6 @@ Tip: On Windows, you can also run: python -m sentinel <target>
             print("DEMO MODE: Analyzing bundled sample project with intentional bugs.\n",
                   file=sys.stderr)
 
-    # Validate target
-    if args.target is None:
-        parser.print_help()
-        return 0
-
     # Validate target directory
     target = Path(args.target).resolve()
     if not target.exists():
@@ -148,6 +154,9 @@ Tip: On Windows, you can also run: python -m sentinel <target>
     if not target.is_dir():
         print(f"ERROR: Target is not a directory: {target}", file=sys.stderr)
         return 1
+    
+    if not args.quiet:
+        print(f"\n🛡️  MindCore · Sentinel - Analyzing {target}\n", file=sys.stderr)
 
     # Safety warning (unless --yes or --safe-mode)
     if not args.yes and not args.safe_mode and not args.quiet:
@@ -186,15 +195,66 @@ Tip: On Windows, you can also run: python -m sentinel <target>
     )
     success = sentinel.run_analysis()
 
-    # Generate report
+    # AI Analysis
+    if args.smart and sentinel.bugs:
+        from .ai_analyst import AIAnalyst
+        analyst = AIAnalyst()
+        analyst.analyze_bugs(sentinel.bugs)
+
+    # Generate reports based on format
     if args.format == "json":
         report = sentinel.generate_json_report()
         report_text = json.dumps(report, indent=2)
+        report_extension = ".json"
+    elif args.format == "html":
+        report_text = sentinel.generate_html_report()
+        report_extension = ".html"
+    elif args.format == "both":
+        # Generate both markdown and HTML
+        md_report = sentinel.generate_report()
+        html_report = sentinel.generate_html_report()
+        
+        # Save markdown
+        report_text = md_report
+        report_extension = ".md"
+        
+        # Also save HTML version
+        if args.output:
+            html_output_path = Path(args.output).with_suffix('.html')
+            html_output_path.write_text(html_report, encoding='utf-8')
+            if not args.quiet:
+                print(f"HTML report written to: {html_output_path}", file=sys.stderr)
+        
+        # Save to global output
+        try:
+            global_output_dir = Path("..").resolve() / "output"
+            global_output_dir.mkdir(exist_ok=True)
+            html_global_path = global_output_dir / "sentinel_report.html"
+            html_global_path.write_text(html_report, encoding='utf-8')
+            if not args.quiet:
+                print(f"HTML report saved to: {html_global_path}", file=sys.stderr)
+        except Exception as e:
+            if not args.quiet:
+                print(f"Warning: Could not save HTML to global output: {e}", file=sys.stderr)
     else:
+        # Default markdown format
         report_text = sentinel.generate_report()
+        report_extension = ".md"
 
     # Redact secrets from output
     report_text = redact_secrets(report_text)
+
+    # Output report to ../output/sentinel_report (as requested)
+    try:
+        global_output_dir = Path("..").resolve() / "output"
+        global_output_dir.mkdir(exist_ok=True)
+        global_report_path = global_output_dir / f"sentinel_report{report_extension}"
+        global_report_path.write_text(report_text, encoding='utf-8')
+        if not args.quiet:
+            print(f"Report saved to global output: {global_report_path}", file=sys.stderr)
+    except Exception as e:
+        if not args.quiet:
+            print(f"Warning: Could not save to global output: {e}", file=sys.stderr)
 
     # Output report
     if args.output:

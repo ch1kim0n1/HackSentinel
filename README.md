@@ -1,78 +1,121 @@
-# MindCore · Sentinel
+# HackSentinel
 
-> **Find the bugs before they find you.**
+MindCore's open source hackathon-oriented software.
 
-MindCore · Sentinel is a CLI-first, deterministic, AI-powered bug discovery tool that simulates a real user interacting with your project and produces **engineer-grade bug reports** in under two minutes.
+## MindCore · Sentinel
 
-Sentinel does not debug your code.  
-It finds where and how your software breaks — before judges, users, or demo-time chaos do.
+A deterministic, time-boxed bug discovery tool that explores a codebase like a rushed demo judge and outputs engineer-grade bug reports.
 
----
+### Features
 
-## Why Sentinel Exists
+- **CLI-first**: Simple command-line interface for easy integration
+- **Local-only**: No cloud dependencies, no authentication required
+- **Deterministic**: Consistent results across runs
+- **Fast**: Executes under 2 minutes with configurable timeout
+- **Multi-language**: Supports Node.js, Python, Go, Rust, Java, and more
+- **Structured Reports**: Markdown bug reports with severity rankings
+- **Zero Configuration**: Automatically infers entry points and user flows
 
-Hackathon teams waste massive time:
-- Manually clicking through unfinished apps
-- Missing obvious crashes during demos
-- Discovering bugs under pressure instead of fixing them
-- Writing poor or incomplete bug reports
+### Installation
 
-Sentinel replaces ad-hoc testing with a **fast, repeatable, autonomous user simulation**.
+The tool is self-contained in a single Python script:
 
----
-
-## Core Principles
-
-- **Hackathon-first**
-- **User-centric bug discovery**
-- **Deterministic output**
-- **Local-only execution**
-- **No authentication**
-- **Strict time limits**
-- **Honest failure reporting**
-
-Sentinel never hallucinates bugs.
-
----
-
-## What Sentinel Is
-
-- A CLI tool
-- An autonomous “user-zero”
-- A bug discovery engine
-- A structured report generator
-
-## What Sentinel Is NOT
-
-- A security scanner
-- A performance tester
-- A load-testing tool
-- A replacement for QA teams
-- A debugger
-- A CI pipeline tool
-
----
-
-## Supported Use Case
-
-**When to use Sentinel:**
-- Mid-hackathon before feature freeze
-- Before demos or judging
-- After major changes
-- When something “feels unstable”
-
-**When not to use Sentinel:**
-- For security audits
-- For performance benchmarking
-- For production-grade QA
-- When code does not run at all
-
----
-
-## Input Contract
-
-Sentinel operates on a **local repository**.
-
-### Required Input
 ```bash
-sentinel /path/to/repo
+chmod +x mindcore-sentinel
+./mindcore-sentinel /path/to/project
+```
+
+### Usage
+
+Basic usage:
+```bash
+./mindcore-sentinel /path/to/project
+```
+
+With timeout (in seconds):
+```bash
+./mindcore-sentinel /path/to/project --timeout 60
+```
+
+Save report to file:
+```bash
+./mindcore-sentinel /path/to/project --output bug-report.md
+```
+
+**📖 New to MindCore · Sentinel?** Check out the [comprehensive usage guide](USAGE.md) for step-by-step instructions and examples!
+
+### How It Works
+
+1. **Project Detection**: Automatically identifies the project type (Node.js, Python, Go, etc.)
+2. **Entry Point Discovery**: Finds executable entry points (main files, package.json scripts, etc.)
+3. **Execution Simulation**: Runs each entry point and captures output
+4. **Bug Analysis**: Analyzes exit codes, error messages, and patterns to identify bugs
+5. **Report Generation**: Creates a structured Markdown report with severity rankings
+
+### Supported Project Types
+
+- **Node.js**: Detects package.json scripts and common entry files (index.js, app.js, etc.)
+- **Python**: Finds main.py, __main__.py modules, and executable scripts
+- **Go**: Discovers main.go files and go.mod modules
+- **Rust**: Detects Cargo.toml projects
+- **Java**: Supports Maven (pom.xml) and Gradle (build.gradle)
+- **Makefile**: Executes make targets
+- **Generic**: Finds any executable files
+
+### Bug Severity Levels
+
+- **CRITICAL**: Segmentation faults, panics, fatal errors
+- **HIGH**: Unhandled exceptions, assertion failures, non-zero exits
+- **MEDIUM**: Warnings, missing dependencies, timeouts
+- **LOW**: Connection issues, minor errors
+
+### Example Output
+
+```markdown
+# MindCore · Sentinel Bug Report
+
+**Analysis Date:** 2026-02-07 00:54:27
+**Target Directory:** `/tmp/test-project`
+**Analysis Duration:** 0.40s
+
+## Summary
+
+Found **1** potential bug(s):
+
+- **HIGH:** 1
+
+## Detailed Findings
+
+### HIGH Severity
+
+#### Bug #1: Process exited with code 1
+
+**Type:** `non_zero_exit`
+
+**Description:**
+
+The entry point 'npm script: error' terminated with a non-zero exit code.
+
+**Reproduction Steps:**
+
+```bash
+npm run error
+```
+
+
+### Limitations
+
+- Focuses on runtime bugs only (ignores security and performance issues)
+- Does not require or use 3rd party APIs
+- Execution timeout per entry point: 10 seconds
+- Global timeout: 120 seconds (configurable)
+
+### Documentation
+
+- **[USAGE.md](USAGE.md)** - Comprehensive usage guide for new developers with step-by-step walkthrough
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick reference for commands and options
+- **[EXAMPLES.md](EXAMPLES.md)** - Example projects and test cases
+
+### Contributing
+
+This is open source hackathon software. Feel free to contribute improvements!

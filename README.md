@@ -28,18 +28,44 @@ chmod +x mindcore-sentinel
 ### Usage
 
 Basic usage:
+
 ```bash
 ./mindcore-sentinel /path/to/project
 ```
 
 With timeout (in seconds):
+
 ```bash
 ./mindcore-sentinel /path/to/project --timeout 60
 ```
 
 Save report to file:
+
 ```bash
 ./mindcore-sentinel /path/to/project --output bug-report.md
+```
+
+**Demo Mode** (no project required):
+
+```bash
+# Run on bundled sample project for demos and testing
+./mindcore-sentinel --demo
+
+# Demo with JSON output
+./mindcore-sentinel --demo --format json
+```
+
+**JSON Output with Filtering:**
+
+```bash
+# JSON format with excluded patterns
+./mindcore-sentinel . --format json --exclude "test/*" --exclude "scripts/*"
+```
+
+**Safe Mode** (extra precautions):
+
+```bash
+./mindcore-sentinel /path/to/project --safe-mode
 ```
 
 **📖 New to MindCore · Sentinel?** Check out the [comprehensive usage guide](USAGE.md) for step-by-step instructions and examples!
@@ -55,7 +81,7 @@ Save report to file:
 ### Supported Project Types
 
 - **Node.js**: Detects package.json scripts and common entry files (index.js, app.js, etc.)
-- **Python**: Finds main.py, __main__.py modules, and executable scripts
+- **Python**: Finds main.py, **main**.py modules, and executable scripts
 - **Go**: Discovers main.go files and go.mod modules
 - **Rust**: Detects Cargo.toml projects
 - **Java**: Supports Maven (pom.xml) and Gradle (build.gradle)
@@ -71,7 +97,7 @@ Save report to file:
 
 ### Example Output
 
-```markdown
+````markdown
 # MindCore · Sentinel Bug Report
 
 **Analysis Date:** 2026-02-07 00:54:27
@@ -101,7 +127,7 @@ The entry point 'npm script: error' terminated with a non-zero exit code.
 ```bash
 npm run error
 ```
-
+````
 
 ### Limitations
 

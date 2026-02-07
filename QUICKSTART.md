@@ -22,6 +22,18 @@ chmod +x mindcore-sentinel
 
 # Save report to file
 ./mindcore-sentinel /path/to/project --output report.md
+
+# Demo mode (no project required)
+./mindcore-sentinel --demo
+
+# JSON output
+./mindcore-sentinel /path/to/project --format json
+
+# JSON with excluded paths
+./mindcore-sentinel . --format json --exclude "test/*" --exclude "dist/*"
+
+# Safe mode (extra precautions)
+./mindcore-sentinel /path/to/project --safe-mode
 ```
 
 ## How It Works
@@ -35,7 +47,7 @@ chmod +x mindcore-sentinel
 ## Supported Languages
 
 - **Node.js**: package.json, .js files
-- **Python**: requirements.txt, .py files, __main__.py
+- **Python**: requirements.txt, .py files, **main**.py
 - **Go**: go.mod, main.go
 - **Rust**: Cargo.toml
 - **Java**: pom.xml, build.gradle
@@ -44,12 +56,12 @@ chmod +x mindcore-sentinel
 
 ## Severity Levels
 
-| Severity | Exit Code | Keywords |
-|----------|-----------|----------|
-| **CRITICAL** | >100 | fatal, panic, segmentation fault |
-| **HIGH** | 1-100 | error, exception, assertion failed |
-| **MEDIUM** | N/A | warning, timeout, cannot find |
-| **LOW** | N/A | connection refused |
+| Severity     | Exit Code | Keywords                           |
+| ------------ | --------- | ---------------------------------- |
+| **CRITICAL** | >100      | fatal, panic, segmentation fault   |
+| **HIGH**     | 1-100     | error, exception, assertion failed |
+| **MEDIUM**   | N/A       | warning, timeout, cannot find      |
+| **LOW**      | N/A       | connection refused                 |
 
 ## Report Format
 
@@ -57,9 +69,11 @@ chmod +x mindcore-sentinel
 # MindCore · Sentinel Bug Report
 
 ## Summary
+
 - Lists total bugs by severity
 
 ## Detailed Findings
+
 - Grouped by severity level
 - Each bug includes:
   - Type and description
@@ -67,6 +81,7 @@ chmod +x mindcore-sentinel
   - Output (stdout/stderr)
 
 ## Diagnostic Logs
+
 - Execution timeline
 - Entry points discovered
 - Errors encountered
@@ -88,11 +103,13 @@ chmod +x mindcore-sentinel
 ## Tips
 
 ✅ **DO:**
+
 - Run on codebases with clear entry points
 - Use custom timeouts for slow projects
 - Check diagnostic logs if analysis fails
 
 ❌ **DON'T:**
+
 - Expect security vulnerability detection
 - Expect performance profiling
 - Run on projects requiring authentication
@@ -101,14 +118,17 @@ chmod +x mindcore-sentinel
 ## Troubleshooting
 
 **"No entry points found"**
+
 - Ensure your project has executable files or package.json scripts
 - Add a main.py, index.js, or similar entry file
 
 **"Execution timeout"**
+
 - Increase timeout: `--timeout 180`
 - Check if entry point requires input
 
 **"Analysis failed"**
+
 - Check diagnostic logs section
 - Verify project is runnable
 - Ensure dependencies are installed

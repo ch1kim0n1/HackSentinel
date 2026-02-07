@@ -42,6 +42,8 @@ Save report to file:
 ./mindcore-sentinel /path/to/project --output bug-report.md
 ```
 
+**📖 New to MindCore · Sentinel?** Check out the [comprehensive usage guide](USAGE.md) for step-by-step instructions and examples!
+
 ### How It Works
 
 1. **Project Detection**: Automatically identifies the project type (Node.js, Python, Go, etc.)
@@ -107,6 +109,12 @@ npm run error
 - Does not require or use 3rd party APIs
 - Execution timeout per entry point: 10 seconds
 - Global timeout: 120 seconds (configurable)
+
+### Documentation
+
+- **[USAGE.md](USAGE.md)** - Comprehensive usage guide for new developers with step-by-step walkthrough
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick reference for commands and options
+- **[EXAMPLES.md](EXAMPLES.md)** - Example projects and test cases
 
 ### Contributing
 

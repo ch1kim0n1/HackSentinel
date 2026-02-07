@@ -1,6 +1,6 @@
 # HackSentinel
 
-MindCore's open source hackathon oriented software.
+MindCore's open source hackathon-oriented software.
 
 ## MindCore · Sentinel
 
